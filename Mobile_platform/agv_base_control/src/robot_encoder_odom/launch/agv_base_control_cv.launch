@@ -1,0 +1,17 @@
+<launch>
+    <!-- Bringup rosserial -->
+    <node pkg="rosserial_python" type="serial_node.py" name="serial_node" required="true">
+        <param name="port" value="/dev/ttyUSB0"/>
+        <param name="baud" value="115200"/>
+    </node>
+    
+    <!-- Bring up encoder odom converter -->
+    <node pkg="robot_encoder_odom" type="robot_encoder_odom_node" name="robot_encoer_odom" output="screen" ></node>
+
+    <!-- Bringup teleop -->
+    <node pkg="teleop_twist_keyboard" type="teleop_twist_keyboard.py" name="teleop_twist_keyboard" output="screen" ></node>
+
+    <!-- Opencv -->
+    <node pkg="vision_control" type="cv2_Python3_test.py" name="cv2_Python3_test" output="screen"></node>    
+
+</launch>

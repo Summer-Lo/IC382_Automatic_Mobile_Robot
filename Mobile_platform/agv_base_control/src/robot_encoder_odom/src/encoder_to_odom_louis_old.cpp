@@ -1,0 +1,225 @@
+#include <math.h>
+#include <stdio.h>
+#include <unistd.h>
+#include "ros/ros.h"
+#include <geometry_msgs/Vector3.h>
+#include <geometry_msgs/Twist.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
+#include <tf/transform_broadcaster.h>
+#include <nav_msgs/Odometry.h>
+#include <std_msgs/Empty.h>
+
+#define PI 3.14159265
+
+// Basic ROS configuration
+const char node_name[] = "encoder_to_odometry_publisher";      // node name
+const char encoder_topic[] = "/stm32/encoders";                // publisher
+const char odom_topic[] = "/odom";                             // subsriber
+const char speed_topic[] = "/cmd_vel";                         // subscriber
+const char initial_topic[] = "/initialpose";                   // subscriber
+const char source_link[] = "odom";                             // TF pair
+const char target_link[] = "base_link";                        // TF pair
+const int ros_update_hz = 5;                                   // 5 Hz or 10 Hz
+
+
+// Robot physical parameters
+const double offset_distance_error = 3.580;                                                  // distance compensation
+const double offset_theta_error = 0.18;                                                      // theta compensation
+const double robot_wheel_seperation = 0.45;                                                  // in meter
+const double robot_wheel_radius = 0.0625;                                                      // in meter
+const double encoder_per_rotation_m1 = 116.0;                                               // encoder value per rotation of motor1 [from 65535 - 65305]
+const double encoder_per_rotation_m2 = 126;                                                // encoder value per rotation of motor2 [from 0 - 28911]
+double distance_per_count_m1 = (double)(2*PI*robot_wheel_radius)/encoder_per_rotation_m1;    // 0.000942 Distance for an encoder pulse in m
+double distance_per_count_m2 = (double)(2*PI*robot_wheel_radius)/encoder_per_rotation_m2 ;   // 0.000942 Distance for an encoder pulse in m
+
+// Variables
+geometry_msgs::Twist msg;
+ros::Time current_time, last_time;  // ROS Time
+double linear_x = 0;                // robot x
+double linear_y = 0;                // robot y
+double angular_z = 0;               // robot angular z
+
+// Instantaneous variables
+double dm1 = 0;
+double dm2 = 0;
+double dc = 0;
+double dx = 0;
+double dy = 0;
+double dtheta = 0;
+double dt = 0;
+
+// Odometry data
+double x = 0;
+double y = 0;
+double theta = 0.00000000001;;
+
+// Previous value
+double _x_tick = 0;
+double _y_tick = 0;
+double _theta = 0;
+int init = 0;
+
+// Velocity data
+double vx = 0;
+double vr = 0;
+
+bool encoderRecieved = false;
+
+ros::Publisher odom_pub;
+
+void resetOdometry(const std_msgs::Empty::ConstPtr &msg)
+{
+    init = 0;
+    theta = 0.00000000001;;
+    dtheta = 0;
+    _theta = 0;
+    x=0;
+    y=0;
+    printf("Reset!");
+}
+
+void VelocityCallback(const geometry_msgs::Twist& msg)
+{
+    linear_x = msg.linear.x;
+    linear_y = msg.linear.y;
+    angular_z = msg.angular.z;
+}
+
+void EncoderCallback(const geometry_msgs::Vector3::ConstPtr& encoder_ticks)
+{
+	// This calculation assume the encoder will send the value within 0 - 65535 //
+
+	if (!init)
+	{
+        _x_tick = encoder_ticks->x;
+        _y_tick = encoder_ticks->y;
+        theta = 0.00000000001;;
+        dtheta = 0;
+        init++;
+        return;
+	}
+
+    // Time intervals
+    current_time = ros::Time::now();
+	dt = (current_time - last_time).toSec();
+    
+    if ((encoder_ticks->x == _x_tick) && (encoder_ticks->y == _y_tick))
+	{   
+        dm1 = 0;
+        dm2 = 0;
+    }
+    else
+    {
+        dm1 = (encoder_ticks->x - _x_tick) * distance_per_count_m1;
+        dm2 = (encoder_ticks->y - _y_tick) * distance_per_count_m2;
+
+        _x_tick = encoder_ticks->x;
+        _y_tick = encoder_ticks->y;
+
+        // Calculate center turning curve
+        dc = (dm2+dm1)*0.5;
+        
+        // Calculate orientation
+        dtheta = (dm2-dm1)/robot_wheel_seperation;
+
+        vx = dc / dt;
+        vr = dtheta / dt;
+
+        if (dc !=0)
+        {
+            dx = dc*cos(dtheta)*0.96;  
+            dy = dc*sin(dtheta);
+
+            x = x + dx;
+            y = y + dy;
+            //x = x + ( cos(theta)*dx - sin(theta)*dy ); 
+            //y = y + ( sin(theta)*dx + cos(theta)*dy );  
+        }
+
+        if( dtheta != 0) 
+            theta = theta + dtheta; 
+     
+        //printf("dt: %f\r\n", dt); 
+        printf("Twist   vx: %f | vy: %f | wz: %f\r\n", linear_x, linear_y, angular_z);
+        printf("Current vx: %f | vy: 0.0 | wz: %f\r\n", vx, vr);        
+        printf("encoder_1: %f | encoder_2: %f\r\n", encoder_ticks->x, encoder_ticks->y);
+        printf("dm1: %f | dm2: %f | dtheta: %f\r\n", dm1, dm2, dtheta);
+        printf("dc = %f \r\n", dc);
+        printf("dx: %f | dy: %f | dtheta: %f(%f)\r\n", dx, dy, dtheta, dtheta*180/PI);
+        printf("pose x: %f | pose y: %f | pose theta: %f(%f)\r\n", x, y, theta, theta*180/PI);
+        printf("\r\n");
+
+        encoderRecieved= true;
+    }
+    // Number of counts in dt
+	// encoder_ticks->x + (65535 - _dm1) used to handle overflow problem of encoder register
+}
+
+int main(int argc, char **argv)
+{
+    ros::init(argc, argv, node_name);
+    ros::NodeHandle nh;
+    ros::Subscriber sub = nh.subscribe(encoder_topic, 100, EncoderCallback);
+    //ros::Publisher odom_pub = nh.advertise<nav_msgs::Odometry>(odom_topic, 50);
+    odom_pub = nh.advertise<nav_msgs::Odometry>(odom_topic, 1);
+    ros::Subscriber vel_sub = nh.subscribe(speed_topic,100,VelocityCallback);
+    ros::Subscriber sub2 = nh.subscribe(initial_topic, 100, resetOdometry);
+    tf::TransformBroadcaster odom_broadcaster;
+    ros::Rate r(ros_update_hz);
+    printf("Encoder To Odom Transformation started!\r\n");
+
+    // Publish loop
+    while (nh.ok())
+    {
+        if (encoderRecieved)
+        {
+            // Only Yaw should be considered
+            //geometry_msgs::Quaternion odom_quat = tf::createQuaternionMsgFromYaw(theta);
+            geometry_msgs::Quaternion odom_quat ; 
+    
+            odom_quat.x = 0.0; 
+            odom_quat.y = 0.0; 
+            odom_quat.z = 0.0; 
+            odom_quat.z = sin( theta / 2 );   
+            odom_quat.w = cos( theta / 2 ); 
+
+            // A TF should be setup between base_link and odom
+            geometry_msgs::TransformStamped odom_trans;
+            odom_trans.header.stamp = current_time;
+            odom_trans.header.frame_id = source_link;
+            odom_trans.child_frame_id = target_link;
+            odom_trans.transform.translation.x = x;
+            odom_trans.transform.translation.y = y;
+            odom_trans.transform.translation.z = 0.0;
+            odom_trans.transform.rotation = odom_quat;
+
+            // Send the transform
+            odom_broadcaster.sendTransform(odom_trans);
+
+            // Publish odom message
+            nav_msgs::Odometry odom;
+            odom.header.stamp = current_time;
+            odom.header.frame_id = source_link;
+            //set the position
+            odom.pose.pose.position.x = x;
+            odom.pose.pose.position.y = y;
+            odom.pose.pose.position.z = 0.0;
+            odom.pose.pose.orientation = odom_quat;   
+            //set the velocity
+            odom.child_frame_id = target_link;
+            odom.twist.twist.linear.x=vx;
+            odom.twist.twist.linear.y=0;
+            odom.twist.twist.angular.z =vr; 
+
+            //publish the message
+            odom_pub.publish(odom);
+            last_time = current_time; 
+            encoderRecieved=false;
+        } 
+     
+        ros::spinOnce();
+        r.sleep();
+    }
+    return 0;
+}
