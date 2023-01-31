@@ -1,3 +1,16 @@
+//  Arduino Uno Loading/Unloading code for 202223 IC382 
+//  Automatic mobile robot Written by Summer Lo on 2023-01-31
+//
+//  Code designed for driving the fork which contains two 
+//  servo motors for holding the cargo. Once the A button is 
+//  pressed, the Arm(fork) will take the action for picking up 
+//  the cargo from the station. Also, the arm will carry the 
+//  cargo back to the home position and hold it. On the other 
+//  side, Once the B button is pressed, the arm(fork) will try 
+//  to place the cargo back into the station. To perform the 
+//  automatic transporter, the top module has to integrate with 
+//  the mobile platform for navigation.
+
 #include <Stepper.h>
 #include <Servo.h>  
 
@@ -19,11 +32,11 @@ int L_down_servo = 90;
 int R_down_servo = 90;
 
 // define stepper direction
-boolean stepper_ena = LOW;
-boolean stepper_disa = HIGH;
-boolean dir_extend = LOW;
-boolean dir_retract = HIGH;
-int stepper_speed = 30;
+boolean stepper_ena = LOW;        //  LOW == enable
+boolean stepper_disa = HIGH;      //  HIGH == disable
+boolean dir_extend = LOW;         //  LOW == extend(Push)
+boolean dir_retract = HIGH;       //  HIGH == retract(Pull)
+int stepper_speed = 30;           //  Default speed for stepper motor
 
 Servo Left_servo;   // define servo motor name
 Servo Right_servo;  // define servo motor name
@@ -40,9 +53,6 @@ void setup() {
   pinMode(EXTEND_SENSOR, INPUT_PULLUP);
   pinMode(A_BUTTON_PIN, INPUT_PULLUP);
   pinMode(B_BUTTON_PIN, INPUT_PULLUP);
-  
-  //digitalWrite(DIR_PIN, LOW);   // LOW = PUSH, HIGH = PULL
-  //digitalWrite(ENA_PIN, stepper_disa);   // LOW = ENABLE, HIGH = DISABLE
 
   // Servo config and Home position
   Left_servo.attach(L_SERVO_PIN);    // config the Left servo motor pin
@@ -52,7 +62,6 @@ void setup() {
   Right_servo.write(R_down_servo);      // Open
   
   // Stepper motor Home position
-  
   Serial.println("<<START>> for HOME position");
   digitalWrite(ENA_PIN,stepper_ena);
   digitalWrite(DIR_PIN,dir_retract);
@@ -68,7 +77,8 @@ void setup() {
   
 }
 void loop() {
-    // GPIO Digital output genereate pulse
+    // GPIO Analog output genereate pulse
+    //  Check the manual button input and execute the corresponding action
     if(digitalRead(A_BUTTON_PIN) == 0)
     {
       Serial.println("<<START>> extending for [Stepper Motor]");
@@ -126,38 +136,4 @@ void loop() {
       digitalWrite(ENA_PIN,stepper_disa);
       Serial.println("<<END>> retracting for [Stepper Motor]");
     }
-    /*
-    Serial.println("<<START>> for [Stepper Motor]");
-    digitalWrite(ENA_PIN,stepper_ena);
-    digitalWrite(DIR_PIN,dir_extend);
-    analogWrite(PUL_PIN,stepper_speed);
-    Serial.println("<<END>> for [Stepper Motor]");
-    Serial.println("<<START>> for [Servo Motor]");
-    Left_servo.write(L_down_servo);      // Open
-    Right_servo.write(R_down_servo);   // Open
-    delay(2000);
-    Serial.println("<<END>> for [Servo Motor]");
-    */
-    /*
-    for(int x=0; x<3*stepsPerRevolution; x++){
-    digitalWrite(PUL_PIN, HIGH);
-    delayMicroseconds(600);
-    digitalWrite(PUL_PIN, LOW);
-    delayMicroseconds(600);
-    }
-    */
-    /*
-    if(digitalRead(END_SENSOR) == 1)
-    {
-    analogWrite(PUL_PIN,10);
-    }
-    else if(digitalRead(END_SENSOR) == 0)
-    {
-      Serial.println("Detected");
-      analogWrite(PUL_PIN,0);
-      analogWrite(L_SERVO_PIN,45);
-      analogWrite(R_SERVO_PIN,45);
-    }
-    */
-  
 }
