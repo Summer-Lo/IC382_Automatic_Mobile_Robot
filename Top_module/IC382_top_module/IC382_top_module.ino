@@ -16,6 +16,8 @@
 
 #define A_BUTTON_PIN 2
 #define B_BUTTON_PIN 3
+#define A_ACK_PIN 4
+#define B_ACK_PIN 5
 #define L_SERVO_PIN 9
 #define R_SERVO_PIN 10
 #define DIR_PIN 8
@@ -36,7 +38,7 @@ boolean stepper_ena = LOW;        //  LOW == enable
 boolean stepper_disa = HIGH;      //  HIGH == disable
 boolean dir_extend = LOW;         //  LOW == extend(Push)
 boolean dir_retract = HIGH;       //  HIGH == retract(Pull)
-int stepper_speed = 30;           //  Default speed for stepper motor
+int stepper_speed = 60;           //  Default speed for stepper motor
 
 Servo Left_servo;   // define servo motor name
 Servo Right_servo;  // define servo motor name
@@ -51,8 +53,13 @@ void setup() {
   
   pinMode(RETRACT_SENSOR, INPUT_PULLUP);
   pinMode(EXTEND_SENSOR, INPUT_PULLUP);
-  pinMode(A_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(B_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(A_BUTTON_PIN, INPUT);
+  pinMode(B_BUTTON_PIN, INPUT);
+  pinMode(A_ACK_PIN, OUTPUT);
+  pinMode(B_ACK_PIN, OUTPUT);
+
+  digitalWrite(A_ACK_PIN,0);
+  digitalWrite(B_ACK_PIN,0);
 
   // Servo config and Home position
   Left_servo.attach(L_SERVO_PIN);    // config the Left servo motor pin
@@ -76,10 +83,22 @@ void setup() {
   Serial.println("<<END>> for HOME position");
   
 }
+
+/*
+ //Testing
+void loop() {
+  Serial.println(digitalRead(3));
+}
+*/
+
 void loop() {
     // GPIO Analog output genereate pulse
     //  Check the manual button input and execute the corresponding action
-    if(digitalRead(A_BUTTON_PIN) == 0)
+    Serial.println("Pin2: ");
+    Serial.println(digitalRead(2));
+    Serial.println("Pin3: ");
+    Serial.println(digitalRead(3));
+    if(digitalRead(A_BUTTON_PIN) == 1)
     {
       Serial.println("<<START>> extending for [Stepper Motor]");
       digitalWrite(ENA_PIN,stepper_ena);
@@ -106,9 +125,15 @@ void loop() {
       analogWrite(PUL_PIN,0);
       digitalWrite(ENA_PIN,stepper_disa);
       Serial.println("<<END>> retracting for [Stepper Motor]");
+      digitalWrite(A_ACK_PIN,1);
+      if(digitalRead(A_BUTTON_PIN) == 0)
+        {
+        digitalWrite(A_ACK_PIN,0);
+        }
+      delay(1000);
     }
 
-    else if(digitalRead(B_BUTTON_PIN) == 0)
+    else if(digitalRead(B_BUTTON_PIN) == 1)
     {
       Serial.println("<<START>> extending for [Stepper Motor]");
       digitalWrite(ENA_PIN,stepper_ena);
@@ -135,5 +160,12 @@ void loop() {
       analogWrite(PUL_PIN,0);
       digitalWrite(ENA_PIN,stepper_disa);
       Serial.println("<<END>> retracting for [Stepper Motor]");
+      digitalWrite(B_ACK_PIN,1);
+      if(digitalRead(B_BUTTON_PIN) == 0)
+        {
+        digitalWrite(B_ACK_PIN,0);
+        }
+      delay(1000);
     }
+    
 }
